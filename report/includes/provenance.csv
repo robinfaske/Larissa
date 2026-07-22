@@ -1,0 +1,39 @@
+variable,value,source
+date,21 Jul 2026,last cached BR fit date
+br_policy,14.25,"fetchers.load('br_policy'), latest, effective annual"
+mx_policy,6.81,"fetchers.load('mx_policy'), latest, effective annual"
+us_policy,3.88,"fetchers.load('us_policy'), latest, effective annual"
+de_policy,2.31,"fetchers.load('de_policy'), latest, effective annual"
+br_path12,−8.4,"analytics.path_12m_bp(BR latest fit, policy)"
+br_naive,−62.1,analytics.naive_cuts_bp — appendix comparison only
+br_slope,+3.9,"BR 5s10s fitted slope, latest"
+br_slope_mean5y,+15.7,5y mean of BR 5s10s slope
+br_sigma5y,20.9,5y stdev of BR 5s10s slope levels
+br_z,−0.56,analytics.slope_zscore(BR 5s10s)
+br_carry,+2.8,"analytics.trade_carry_roll_bp(BR, 5, 10, steepener)"
+br_vol,49.6,analytics.trade_vol_3m_bp(BR 5s10s)
+br_vol_wk,34.9,analytics.weekly_vol_3m_bp(BR 5s10s)
+br_cv,0.06,"carry / vol, BR 5s10s steepener"
+br_inval,−17.0,analytics.invalidation_bp(BR 5s10s)
+br_y5,14.67,"fitted BR 5y yield, latest"
+br_y10,14.71,"fitted BR 10y yield, latest"
+br_ratio,1.00,analytics.dv01_neutral_ratio — 5y notional per 1.00 of 10y
+br_rmse,3.4,median BR fit RMSE
+mx_cv,0.24,"carry / vol, MX 2s10s steepener"
+mx_carry,+17.2,"analytics.trade_carry_roll_bp(MX, 2, 10, steepener)"
+mx_vol,70.8,analytics.trade_vol_3m_bp(MX 2s10s)
+mx_vol_wk,71.1,analytics.weekly_vol_3m_bp(MX 2s10s)
+mx_z,+1.31,analytics.slope_zscore(MX 2s10s)
+mx_slope,+139.2,"MX 2s10s fitted slope, latest"
+mx_path12,+105.1,analytics.path_12m_bp(MX)
+box_level,−27.5,BR minus US 5s10s fitted slope
+box_z,−0.75,analytics.slope_zscore(BR−US 5s10s box)
+box_corr,0.00,daily slope-change correlation
+kill_move,−20.9,invalidation minus entry slope
+kill_quarters,7.4,|invalidation move| / quarterly carry
+kill_worst3m,−83.2,"min 66-bday change of BR 5s10s slope, 5y window"
+kill_worst3m_when,Nov 2021,date of that worst 3m flattening
+rb_5s10s,+3.8,retail-basis differential 10y minus 5y (slope mismeasurement)
+rb_1y,−7.6,DECISIONS.md one-off ANBIMA cross-check
+rb_5y,−23.1,DECISIONS.md one-off ANBIMA cross-check
+rb_10y,−19.3,DECISIONS.md one-off ANBIMA cross-check
