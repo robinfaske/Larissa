@@ -37,3 +37,12 @@ rb_5s10s,+3.8,retail-basis differential 10y minus 5y (slope mismeasurement)
 rb_1y,−7.6,DECISIONS.md one-off ANBIMA cross-check
 rb_5y,−23.1,DECISIONS.md one-off ANBIMA cross-check
 rb_10y,−19.3,DECISIONS.md one-off ANBIMA cross-check
+rob_rich_n,1450,"robustness.reversion_counts, z>+1 events"
+rob_rich_hit,0.63,"toward-mean hit rate, z>+1"
+rob_rich_move,5.5,"median toward-mean move, z>+1"
+rob_cheap_n,3258,"robustness.reversion_counts, z<−1 events"
+rob_cheap_hit,0.49,"toward-mean hit rate, z<−1"
+rob_br_carry_lo,1.6,"BR carry, min over pinned λ"
+rob_br_carry_hi,1.8,"BR carry, max over pinned λ"
+rob_br_rmse_max,14.3,BR worst 66d rolling RMSE
+rob_br_rmse_when,Feb 2021,date of BR worst rolling RMSE

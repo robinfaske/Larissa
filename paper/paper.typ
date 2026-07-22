@@ -92,9 +92,9 @@
 ]
 
 = Data
-I use only free, public sources; each fetcher fails loudly rather than
-returning partial data, and all series are cached so results reproduce
-offline. Brazilian prefixado yields come from the Tesouro Direto daily
+I fit government curves in the tradition of @gurkaynak2007us, using only
+free, public sources; each fetcher fails loudly rather than returning
+partial data, and all series are cached so results reproduce offline. Brazilian prefixado yields come from the Tesouro Direto daily
 rates file (LTN and NTN-F), a retail window: on the one cross-check date
 the public ANBIMA interbank curve allows, the fitted retail curve sits
 #n.rb_1y bp, #n.rb_5y bp, and #n.rb_10y bp below interbank at 1, 5, and 10
@@ -176,13 +176,52 @@ statement about the policy rate a year out, and the cross-market ranking is
 robust to the choice (Appendix C).
 
 = Robustness
-#owner[#text(fill: accent, style: "italic")[Placeholder — implemented in
-milestone P4: (i) sensitivity of slope, z, and carry to the fitted decay
-parameter $lambda$ pinned across its historical range; (ii) rolling-window
-fit-RMSE stability through the 2021 stress; (iii) weekly- versus
-daily-sampled slope vol for all eight trades; (iv) a count-based check of
-slope z-score mean reversion — episode counts and hit rates, no backtest
-engine.]]
+I run four checks; none constructs a profit-and-loss backtest.
+
+*Decay sensitivity.* I refit each curve with the Nelson–Siegel decay pinned
+at the 10th, 50th, and 90th percentiles of its own fitted-decay history and
+recompute the trade quantities (Table 2). The Brazil 5s10s carry is nearly
+invariant, ranging #n.rob_br_carry_lo–#n.rob_br_carry_hi bp across the full
+decay range; the slope and z-score move more, since pinning the decay away
+from its fitted value re-shapes the belly. The Mexico 2s10s is more
+decay-sensitive, as its front leg sits where the decay term is largest.
+
+#figure(booktabs("/report/includes/rob_lambda.csv"), caption: [
+  Latest slope, z-score, and carry with the decay pinned at percentiles of
+  each curve's fitted-decay history.]) <tab-lambda>
+
+*Fit stability.* The 66-business-day rolling median RMSE (Table 3) stays
+near its full-sample median outside stress. Brazil's worst window reaches
+#n.rob_br_rmse_max bp in #n.rob_br_rmse_when, roughly four times its median,
+so fitted-slope readings from that period carry wider error.
+
+#figure(booktabs("/report/includes/rob_rmse.csv"), caption: [
+  Full-sample median versus worst 66-day rolling-median fit RMSE, by curve.]) <tab-rmse-roll>
+
+*Sampling frequency.* Weekly- and daily-sampled slope vols agree for Mexico
+(ratio near one), confirming that the 45-day forward-fill does not damp the
+daily vol estimate; for the daily sources the weekly figure is lower, so the
+daily estimate is, if anything, conservative in the sizing denominator
+(Table 4).
+
+#figure(booktabs("/report/includes/rob_sampling.csv"), caption: [
+  Daily- versus weekly-sampled 3-month slope vol, per trade.]) <tab-sampling>
+
+*Mean reversion.* Pooling all eight trades, I count every date whose trailing
+five-year z-score exceeds one in absolute value and ask whether the slope
+moves toward its mean over the next 66 business days (Table 5). Reversion is
+asymmetric: from steep levels (z > +1) the slope flattens #n.rob_rich_hit of
+the time across #n.rob_rich_n events, but from flat levels (z < −1) it
+steepens only #n.rob_cheap_hit of the time across #n.rob_cheap_n events, near
+a coin flip. The Brazil trade is a flat-slope position, so its edge rests on
+the forward-implied path mispricing and positive carry, not on z-score mean
+reversion; the z-score is context, and the invalidation level is risk
+management rather than expected alpha.
+
+#figure(booktabs("/report/includes/rob_reversion.csv"), caption: [
+  Count-based mean-reversion check, pooled across all trades. Hit rate is the
+  fraction of dates whose slope moves toward its mean over the next 66 days;
+  50% is the no-reversion benchmark.]) <tab-reversion>
 
 = Discussion and limitations
 #owner[

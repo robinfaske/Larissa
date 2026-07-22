@@ -142,8 +142,67 @@ def write_includes(fits: dict, policy: dict, summary: pd.DataFrame) -> list[tupl
         "Naive 2x(1y-policy) bp": [fmt(x, 1, sign=True) for x in naive["naive_cuts_bp"]],
     }).to_csv(INC / "path_compare.csv", index=False)
 
+    _write_vars_provenance(rows)
+    return rows
+
+
+def _write_vars_provenance(rows: list[tuple]) -> None:
+    body = "\n".join(f'  {n}: "{v}",' for n, v, _ in rows)
+    (INC / "vars.typ").write_text(f"#let n = (\n{body}\n)\n")
     pd.DataFrame(rows, columns=["variable", "value", "source"]).to_csv(
         INC / "provenance.csv", index=False)
+
+
+def build_robustness(fits: dict, policy: dict) -> list[tuple]:
+    """Compute the four Section-5 checks, write their CSVs, return extra vars."""
+    from src import fetchers, robustness
+    pol = {cc: analytics.latest_policy(policy[cc]) for cc in fits}
+    curves = {"BR": fetchers.load("br_curve"), "US": fetchers.load("us_curve"),
+              "MX": fetchers.ffill_panel(fetchers.load("mx_curve"))}
+
+    samp = robustness.sampling_vol(fits)
+    rmse = robustness.rolling_rmse(fits)
+    rev = robustness.reversion_counts(fits)
+    lam = robustness.lambda_sensitivity(
+        curves, {"BR": (5.0, 10.0), "MX": (2.0, 10.0), "US": (5.0, 10.0)}, pol)
+    _minus = lambda s: s.astype(str).str.replace("-", "−", regex=False)
+    pd.DataFrame({
+        "Country": lam["country"], "Trade": lam["trade"], "Pctile": lam["pctile"],
+        "λ (yrs)": lam["lambda"].map(lambda x: f"{x:.2f}"),
+        "Slope bp": _minus(lam["slope_bp"].map(lambda x: f"{x:+.1f}")),
+        "z (5y)": _minus(lam["z"].map(lambda x: f"{x:+.2f}")),
+        "Carry bp": _minus(lam["carry_bp"].map(lambda x: f"{x:+.1f}")),
+    }).to_csv(INC / "rob_lambda.csv", index=False)
+    pd.DataFrame({
+        "Curve": rmse["country"], "Median RMSE bp": rmse["rmse_median_bp"],
+        "Worst 66d RMSE bp": rmse["rmse_roll_max_bp"], "Worst window": rmse["worst_window"],
+    }).to_csv(INC / "rob_rmse.csv", index=False)
+    pd.DataFrame({
+        "Country": samp["country"], "Trade": samp["trade"],
+        "Vol daily bp": samp["vol_daily_bp"], "Vol weekly bp": samp["vol_weekly_bp"],
+        "Weekly / daily": samp["ratio"].map(lambda x: f"{x:.2f}"),
+    }).to_csv(INC / "rob_sampling.csv", index=False)
+    pd.DataFrame({
+        "Bucket": rev["bucket"], "Events": rev["events"],
+        "Toward-mean hit rate": rev["hit_rate"].map(lambda x: f"{x:.2f}"),
+        "Median move bp": _minus(rev["median_toward_mean_bp"].map(lambda x: f"{x:+.1f}")),
+    }).to_csv(INC / "rob_reversion.csv", index=False)
+
+    rich = rev.iloc[0]
+    cheap = rev.iloc[1]
+    br_lam = lam[lam["country"] == "BR"]
+    br_rmse = rmse[rmse["country"] == "BR"].iloc[0]
+    rows = [
+        ("rob_rich_n", f"{int(rich['events'])}", "robustness.reversion_counts, z>+1 events"),
+        ("rob_rich_hit", fmt(rich["hit_rate"], 2), "toward-mean hit rate, z>+1"),
+        ("rob_rich_move", fmt(rich["median_toward_mean_bp"], 1), "median toward-mean move, z>+1"),
+        ("rob_cheap_n", f"{int(cheap['events'])}", "robustness.reversion_counts, z<−1 events"),
+        ("rob_cheap_hit", fmt(cheap["hit_rate"], 2), "toward-mean hit rate, z<−1"),
+        ("rob_br_carry_lo", fmt(br_lam["carry_bp"].min(), 1), "BR carry, min over pinned λ"),
+        ("rob_br_carry_hi", fmt(br_lam["carry_bp"].max(), 1), "BR carry, max over pinned λ"),
+        ("rob_br_rmse_max", fmt(br_rmse["rmse_roll_max_bp"], 1), "BR worst 66d rolling RMSE"),
+        ("rob_br_rmse_when", br_rmse["worst_window"], "date of BR worst rolling RMSE"),
+    ]
     return rows
 
 
@@ -184,6 +243,8 @@ def main() -> None:
     summary = analytics.summary_table(fits, policy)
     run_all.build_figures(fits, summary)
     rows = write_includes(fits, policy, summary)
+    rows = rows + build_robustness(fits, policy)
+    _write_vars_provenance(rows)  # rewrite with robustness vars appended
     print(f"{len(rows)} variables ->", INC / "vars.typ")
 
     _compile(ROOT / "report" / "note.typ", ROOT / "report" / "note.pdf")

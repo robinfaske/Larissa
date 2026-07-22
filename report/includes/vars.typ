@@ -37,4 +37,13 @@
   rb_1y: "−7.6",
   rb_5y: "−23.1",
   rb_10y: "−19.3",
+  rob_rich_n: "1450",
+  rob_rich_hit: "0.63",
+  rob_rich_move: "5.5",
+  rob_cheap_n: "3258",
+  rob_cheap_hit: "0.49",
+  rob_br_carry_lo: "1.6",
+  rob_br_carry_hi: "1.8",
+  rob_br_rmse_max: "14.3",
+  rob_br_rmse_when: "Feb 2021",
 )
