@@ -44,11 +44,12 @@ def _save(fig: plt.Figure, name: str) -> Path:
     return path
 
 
-def plot_curve_panels(curves: dict[str, dict[str, np.ndarray]],
-                      grid: np.ndarray) -> Path:
+def plot_curve_panels(curves: dict[str, dict[str, np.ndarray]]) -> Path:
     """Chart 1 — small multiples: fitted curve today vs 6m ago, per country.
 
-    `curves[cc]` holds arrays 'today' and 'past' evaluated on `grid` (years).
+    `curves[cc]` holds arrays 'today' and 'past' evaluated on its 'grid'
+    (years) — grids differ per country so no panel extrapolates below the
+    shortest observed tenor.
     """
     with plt.rc_context(STYLE):
         cols = min(len(curves), 3)
@@ -57,13 +58,19 @@ def plot_curve_panels(curves: dict[str, dict[str, np.ndarray]],
                                  sharex=True, squeeze=False)
         for ax, (cc, data) in zip(axes.flat, curves.items()):
             color = COUNTRY_COLORS.get(cc, INK2)
+            grid = data["grid"]
             ax.plot(grid, data["past"], color=MUTED, lw=1.4, ls=(0, (4, 3)))
             ax.plot(grid, data["today"], color=color, lw=2.0)
             ax.set_title(cc, color=color)
+            span = max(np.ptp(np.r_[data["today"], data["past"]]), 1e-9)
+            apart = data["today"][-1] - data["past"][-1]
+            nudge = "bottom" if apart >= 0 else "top"  # keep end labels apart
+            close = abs(apart) < 0.12 * span
             ax.text(grid[-1], data["today"][-1], " today", color=color,
-                    fontsize=7.5, va="center")
+                    fontsize=7.5, va=nudge if close else "center")
             ax.text(grid[-1], data["past"][-1], " 6m ago", color=MUTED,
-                    fontsize=7.5, va="center")
+                    fontsize=7.5,
+                    va=("top" if nudge == "bottom" else "bottom") if close else "center")
         for ax in axes.flat[len(curves):]:
             ax.set_visible(False)
         for ax in axes[-1]:
@@ -82,14 +89,24 @@ def plot_z_vs_cuts(summary: pd.DataFrame) -> Path:
         fig, ax = plt.subplots(figsize=(4.8, 4.0))
         ax.axhline(0, color=BASELINE, lw=0.8, zorder=1)
         ax.axvline(0, color=BASELINE, lw=0.8, zorder=1)
+        xs, ys = summary["cuts_priced_12m_bp"], summary["slope_z"]
+        xr, yr = max(np.ptp(xs), 1e-9), max(np.ptp(ys), 1e-9)
+        placed: list[tuple[float, float]] = []
+        offsets = ((6, 4), (6, -11), (-6, 4), (-6, -11), (6, 14), (-6, 14))
         for _, row in summary.iterrows():
             color = COUNTRY_COLORS.get(row["country"], INK2)
-            ax.scatter(row["cuts_priced_12m_bp"], row["slope_z"], s=42,
-                       color=color, zorder=3)
-            ax.annotate(f'{row["country"]} {row["trade"]}',
-                        (row["cuts_priced_12m_bp"], row["slope_z"]),
-                        xytext=(5, 4), textcoords="offset points",
-                        fontsize=8, color=INK)
+            x, y = row["cuts_priced_12m_bp"], row["slope_z"]
+            ax.scatter(x, y, s=42, color=color, zorder=3)
+            for dx, dy in offsets:  # first offset whose label clears the rest
+                lx, ly = x + dx * xr / 300, y + dy * yr / 300
+                if all(abs(lx - px) / xr > 0.16 or abs(ly - py) / yr > 0.045
+                       for px, py in placed):
+                    break
+            placed.append((lx, ly))
+            ax.annotate(f'{row["country"]} {row["trade"]}', (x, y),
+                        xytext=(dx, dy), textcoords="offset points",
+                        fontsize=8, color=INK,
+                        ha="left" if dx > 0 else "right")
         ax.set_xlabel("policy change priced over 12m, bp (negative = cuts)")
         ax.set_ylabel("slope z-score vs 5y history")
         ax.set_title("Rich cuts, flat curves — where both line up")

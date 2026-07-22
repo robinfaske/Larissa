@@ -20,11 +20,12 @@ from src import analytics, fetchers
 from src.curves import curve_at, fit_history
 from src.plots import plot_carry_ranking, plot_curve_panels, plot_z_vs_cuts
 
-PANEL_GRID = np.linspace(0.25, 10.0, 60)
+PANEL_START = {"BR": 0.5}  # shortest TD bond is ~6m; don't extrapolate below
+PANEL_DEFAULT_START = 0.25
 
 DATASETS = {  # cache name -> fetcher
     "mx_curve": fetchers.fetch_mx_curve, "mx_policy": fetchers.fetch_mx_policy,
-    "br_params": fetchers.fetch_br_params, "br_policy": fetchers.fetch_br_policy,
+    "br_curve": fetchers.fetch_br_curve, "br_policy": fetchers.fetch_br_policy,
     "us_curve": fetchers.fetch_us_curve, "us_policy": fetchers.fetch_us_policy,
     "de_params": fetchers.fetch_de_params, "de_policy": fetchers.fetch_de_policy,
 }
@@ -53,11 +54,14 @@ def load_all() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
     for cc, curve_name, policy_name, kind in (
             ("MX", "mx_curve", "mx_policy", "fit"),
             ("US", "us_curve", "us_policy", "fit"),
-            ("BR", "br_params", "br_policy", "published"),
+            ("BR", "br_curve", "br_policy", "fit"),
             ("DE", "de_params", "de_policy", "published")):
         try:
             if kind == "fit":
-                fits[cc] = fit_history(fetchers.load(curve_name))
+                curve = fetchers.load(curve_name)
+                if cc == "MX":  # weekly auctions -> daily panel, DECISIONS.md
+                    curve = fetchers.ffill_panel(curve)
+                fits[cc] = fit_history(curve)
             else:
                 fits[cc] = fetchers.load(curve_name)
             policy[cc] = fetchers.load(policy_name)
@@ -96,9 +100,10 @@ def build_figures(fits: dict[str, pd.DataFrame], summary: pd.DataFrame) -> list[
     for cc, frame in fits.items():
         today = frame.iloc[-1]
         past_idx = (frame["date"] - (today["date"] - pd.Timedelta(days=182))).abs().idxmin()
-        curves[cc] = {"today": curve_at(today, PANEL_GRID),
-                      "past": curve_at(frame.loc[past_idx], PANEL_GRID)}
-    return [plot_curve_panels(curves, PANEL_GRID),
+        grid = np.linspace(PANEL_START.get(cc, PANEL_DEFAULT_START), 10.0, 60)
+        curves[cc] = {"grid": grid, "today": curve_at(today, grid),
+                      "past": curve_at(frame.loc[past_idx], grid)}
+    return [plot_curve_panels(curves),
             plot_z_vs_cuts(summary),
             plot_carry_ranking(summary)]
 

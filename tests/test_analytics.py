@@ -78,8 +78,9 @@ def test_summary_table_and_figures_end_to_end(tmp_path, monkeypatch):
                        "slope_z"].iloc[0] == pytest.approx(z)
     monkeypatch.setattr(plots, "FIG_DIR", tmp_path)
     grid = np.linspace(0.25, 10, 40)
-    curves = {cc: {"today": curve_at(f.iloc[-1], grid), "past": curve_at(f.iloc[0], grid)}
+    curves = {cc: {"grid": grid, "today": curve_at(f.iloc[-1], grid),
+                   "past": curve_at(f.iloc[0], grid)}
               for cc, f in fits.items()}
-    for path in (plots.plot_curve_panels(curves, grid), plots.plot_z_vs_cuts(summary),
+    for path in (plots.plot_curve_panels(curves), plots.plot_z_vs_cuts(summary),
                  plots.plot_carry_ranking(summary)):
         assert path.exists() and path.stat().st_size > 10_000

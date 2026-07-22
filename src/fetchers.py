@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import io
 import os
-import re
-import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
@@ -27,9 +25,10 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "cache"
 HISTORY_YEARS = 6  # 5y z-score window + 6m-ago curve comparison
 STD_GRID = [0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0]
 
-MX_SERIES = {  # Banxico SIE, secondary/auction yields. Bonos IDs: verify on first refresh.
+MX_SERIES = {  # Banxico SIE weekly-auction yields (verified via cuadro CF107 titles)
     28 / 365: "SF43936", 91 / 365: "SF43939", 182 / 365: "SF43942", 364 / 365: "SF43945",
-    3.0: "SF44070", 5.0: "SF44071", 10.0: "SF44072", 20.0: "SF44073", 30.0: "SF44074",
+    3.0: "SF43883", 5.0: "SF43886", 7.0: "SF44946", 10.0: "SF44071",
+    20.0: "SF45384", 30.0: "SF60696",
 }
 US_TENORS = {"1 Mo": 1 / 12, "3 Mo": 0.25, "6 Mo": 0.5, "1 Yr": 1.0, "2 Yr": 2.0,
              "3 Yr": 3.0, "5 Yr": 5.0, "7 Yr": 7.0, "10 Yr": 10.0, "20 Yr": 20.0, "30 Yr": 30.0}
@@ -58,6 +57,15 @@ def simple_360_to_effective(y_pct: pd.Series, days: int) -> pd.Series:
     """Simple annualized act/360 rate (%) for a `days` term -> effective annual (%)."""
     period = y_pct / 100.0 * days / 360.0
     return ((1 + period) ** (365.0 / days) - 1) * 100.0
+
+
+def overnight_360_to_effective(r_pct: pd.Series) -> pd.Series:
+    """Overnight simple act/360 policy quote (%) -> effective annual (%).
+
+    Applies to the Banxico target, fed funds bounds, and the ECB deposit
+    rate; the Selic target is already effective annual (DECISIONS.md).
+    """
+    return ((1 + r_pct / 100.0 / 360.0) ** 365 - 1) * 100.0
 
 
 def load(name: str) -> pd.DataFrame:
@@ -99,7 +107,9 @@ def fetch_mx_curve() -> pd.DataFrame:
         for obs in serie.get("datos", []):
             if obs["dato"] in ("N/E", ""):
                 continue
-            rows.append((pd.to_datetime(obs["fecha"], dayfirst=True), tenor, float(obs["dato"])))
+            # SIE uses commas as thousands separators (e.g. term-in-days series)
+            rows.append((pd.to_datetime(obs["fecha"], dayfirst=True), tenor,
+                         float(str(obs["dato"]).replace(",", ""))))
     frame = pd.DataFrame(rows, columns=["date", "tenor_yrs", "yield_pct"])
     cetes = frame["tenor_yrs"] < 1.5
     for tenor in frame.loc[cetes, "tenor_yrs"].unique():
@@ -110,6 +120,21 @@ def fetch_mx_curve() -> pd.DataFrame:
     return frame.sort_values(["date", "tenor_yrs"]).reset_index(drop=True)
 
 
+def ffill_panel(curve: pd.DataFrame, limit_bdays: int = 45) -> pd.DataFrame:
+    """Weekly-auction observations (MX) -> business-daily curve panel.
+
+    Each tenor is forward-filled at most `limit_bdays`; dates still missing
+    any tenor are dropped, never interpolated across tenors (DECISIONS.md).
+    """
+    wide = (curve.pivot_table(index="date", columns="tenor_yrs",
+                              values="yield_pct", aggfunc="last")
+            .reindex(pd.bdate_range(curve["date"].min(), curve["date"].max()))
+            .ffill(limit=limit_bdays).dropna())
+    long = wide.rename_axis("date").reset_index().melt(
+        "date", var_name="tenor_yrs", value_name="yield_pct")
+    return long.sort_values(["date", "tenor_yrs"]).reset_index(drop=True)
+
+
 def fetch_mx_policy() -> pd.DataFrame:
     """Banxico overnight target rate (SIE series SF61745)."""
     token = os.environ.get("BANXICO_TOKEN")
@@ -118,64 +143,42 @@ def fetch_mx_policy() -> pd.DataFrame:
     url = (f"https://www.banxico.org.mx/SieAPIRest/service/v1/series/SF61745/datos/"
            f"{_start_date():%Y-%m-%d}/{date.today():%Y-%m-%d}")
     datos = _get(url, headers={"Bmx-Token": token}).json()["bmx"]["series"][0]["datos"]
-    return pd.DataFrame(
+    out = pd.DataFrame(
         [(pd.to_datetime(o["fecha"], dayfirst=True), float(o["dato"]))
          for o in datos if o["dato"] not in ("N/E", "")],
         columns=["date", "rate_pct"])
+    out["rate_pct"] = overnight_360_to_effective(out["rate_pct"])
+    return out
 
 
-# --- Brazil: ANBIMA ETTJ params + BCB SGS policy ----------------------------
+# --- Brazil: Tesouro Direto prefixado bonds + BCB SGS policy ----------------
 
-def fetch_br_params() -> pd.DataFrame:
-    """Daily ANBIMA Svensson parameters for the prefixado curve.
+BR_TD_URL = ("https://www.tesourotransparente.gov.br/ckan/dataset/"
+             "df56aa42-484a-4a59-8184-7676580c81e3/resource/"
+             "796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv")
 
-    One POST per business day; incremental — days already cached are not
-    re-requested. ANBIMA rates are effective annual on a 252-business-day
-    basis (DECISIONS.md), so parameters are used as published.
+
+def fetch_br_curve() -> pd.DataFrame:
+    """Prefixado curve from the Tesouro Direto daily rates file (LTN + NTN-F).
+
+    One ~14MB CSV with full history — chosen after ANBIMA's public download
+    proved to be a rolling 5-business-day window and B3's legacy vertex page
+    is dead server-side (DECISIONS.md). Mid of morning buy/sell rates;
+    252-business-day effective annual, so no compounding conversion. Tenors
+    are each bond's actual time to maturity, which NS/NSS fitting handles.
     """
-    cached = None
-    if (CACHE_DIR / "br_params.csv").exists():
-        cached = load("br_params")
-    have = set(cached["date"].dt.date) if cached is not None else set()
-    days = pd.bdate_range(_start_date(), date.today())
-    rows = []
-    for day in days:
-        if day.date() in have:
-            continue
-        resp = requests.post(
-            "https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp",
-            data={"Idioma": "PT", "Dt_Ref": f"{day:%d/%m/%Y}", "saida": "txt"},
-            timeout=30)
-        resp.raise_for_status()
-        text = resp.text
-        time.sleep(0.15)  # politeness: ~1.5k sequential requests on first run
-        params = _parse_anbima_prefixado(text)
-        if params is not None:  # holidays return an empty document
-            rows.append((day, *params))
-        if len(rows) % 100 == 0 and rows:  # checkpoint: first run is ~1.5k requests
-            _combine_br(cached, rows).to_csv(CACHE_DIR / "br_params.csv", index=False)
-    return _combine_br(cached, rows)
-
-
-def _combine_br(cached: pd.DataFrame | None, rows: list[tuple]) -> pd.DataFrame:
-    fresh = pd.DataFrame(rows, columns=["date", "b0", "b1", "b2", "b3", "t1", "t2"])
-    out = pd.concat([cached, fresh]) if cached is not None else fresh
-    return out.sort_values("date").reset_index(drop=True)
-
-
-def _parse_anbima_prefixado(text: str) -> tuple[float, ...] | None:
-    """Extract (b0..b3, t1, t2) from the PREFIXADOS block of ANBIMA's txt download."""
-    block = re.search(r"PREFIXADOS(.*?)(?:IPCA|$)", text, flags=re.S | re.I)
-    if not block:
-        return None
-    # decimal commas AND scientific notation, e.g. -7,28447805013511E-03
-    nums = re.findall(r"-?\d+[.,]\d+(?:E[+-]?\d+)?", block.group(1))
-    if len(nums) < 6:
-        return None
-    b1, b2, b3, b4, l1, l2 = (float(n.replace(",", ".")) for n in nums[:6])
-    # ANBIMA quotes betas in decimals (0.1458 = 14.58%) and lambdas as decay
-    # rates; convert to our percent basis and tau = 1/lambda.
-    return 100 * b1, 100 * b2, 100 * b3, 100 * b4, 1.0 / l1, 1.0 / l2
+    raw = pd.read_csv(io.StringIO(_get(BR_TD_URL).text), sep=";", decimal=",")
+    pre = raw[raw["Tipo Titulo"].isin(
+        ["Tesouro Prefixado", "Tesouro Prefixado com Juros Semestrais"])]
+    out = pd.DataFrame({
+        "date": pd.to_datetime(pre["Data Base"], dayfirst=True),
+        "tenor_yrs": (pd.to_datetime(pre["Data Vencimento"], dayfirst=True)
+                      - pd.to_datetime(pre["Data Base"], dayfirst=True)).dt.days / 365.25,
+        "yield_pct": (pre["Taxa Compra Manha"] + pre["Taxa Venda Manha"]) / 2,
+    })
+    out = out[(out["date"] >= pd.Timestamp(_start_date()))
+              & out["tenor_yrs"].between(0.08, 11.0)]
+    return out.sort_values(["date", "tenor_yrs"]).reset_index(drop=True)
 
 
 def fetch_br_policy() -> pd.DataFrame:
@@ -208,15 +211,21 @@ def fetch_us_curve() -> pd.DataFrame:
             .sort_values(["date", "tenor_yrs"]).reset_index(drop=True))
 
 
-def fetch_us_policy() -> pd.DataFrame:
-    """Fed funds target upper bound via FRED's public fredgraph CSV (no key)."""
-    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFEDTARU"
+def _fredgraph(series_id: str) -> pd.DataFrame:
+    """Daily series via FRED's public fredgraph CSV (no key), effective annual %."""
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     raw = pd.read_csv(io.StringIO(_get(url).text)).rename(
-        columns={"DATE": "date", "observation_date": "date", "DFEDTARU": "rate_pct"})
+        columns={"DATE": "date", "observation_date": "date", series_id: "rate_pct"})
     raw["date"] = pd.to_datetime(raw["date"])
     raw["rate_pct"] = pd.to_numeric(raw["rate_pct"], errors="coerce")
     raw = raw.dropna()
+    raw["rate_pct"] = overnight_360_to_effective(raw["rate_pct"])
     return raw[raw["date"] >= pd.Timestamp(_start_date())].reset_index(drop=True)
+
+
+def fetch_us_policy() -> pd.DataFrame:
+    """Fed funds target upper bound (FRED DFEDTARU)."""
+    return _fredgraph("DFEDTARU")
 
 
 # --- Germany: Bundesbank published Svensson coefficients --------------------
@@ -256,11 +265,12 @@ def fetch_de_yield_grid() -> pd.DataFrame:
 
 
 def fetch_de_policy() -> pd.DataFrame:
-    """ECB deposit facility rate via the ECB data portal SDMX CSV (no key)."""
-    url = ("https://data-api.ecb.europa.eu/service/data/FM/D.U2.EUR.4F.KR.DFR.LEV"
-           f"?format=csvdata&startPeriod={_start_date():%Y-%m-%d}")
-    raw = pd.read_csv(io.StringIO(_get(url).text))
-    return _parse_bbk_csv(raw, value_name="rate_pct")
+    """ECB deposit facility rate via FRED's ECBDFR mirror (no key).
+
+    The canonical source (ECB data portal, FM.D.U2.EUR.4F.KR.DFR.LEV) was
+    returning 504s at build time — see DECISIONS.md.
+    """
+    return _fredgraph("ECBDFR")
 
 
 def _parse_bbk_csv(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
@@ -270,6 +280,6 @@ def _parse_bbk_csv(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
     value_col = next(c for c in raw.columns if c.upper().startswith(("OBS_VALUE", "VALUE", "BBSIS")))
     out = raw[[date_col, value_col]].copy()
     out.columns = ["date", value_name]
-    out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out["date"] = pd.to_datetime(out["date"], format="%Y-%m-%d", errors="coerce")
     out[value_name] = pd.to_numeric(out[value_name], errors="coerce")
     return out.dropna().reset_index(drop=True)

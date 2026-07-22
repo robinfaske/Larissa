@@ -3,62 +3,83 @@
 Data quirks, conventions, and fallbacks. Anything surprising about the data
 lives here, not in code comments.
 
-## Environment constraint (2026-07-22)
+## Build note (2026-07-22)
 
-This repo was built in a sandboxed session whose network policy blocks all
-data hosts (Banxico, BCB, treasury.gov, Bundesbank, ANBIMA all returned
-proxy-level 403). Endpoints below were therefore verified against current
-documentation, not against live responses. **No cache CSVs are committed yet
-— nothing was fabricated to fill the gap.** First run of
-`python scripts/run_all.py --refresh` on an open network populates
-`data/cache/`; commit those CSVs so everything reproduces offline afterwards.
-Items marked *verify on first refresh* may need a series-ID correction; every
-fetcher fails loudly (no silent empty frames) so a wrong ID cannot slip
-through as missing data.
+The repo was scaffolded in a sandbox that initially blocked all data hosts;
+after the network was opened, every endpoint was verified against live
+responses and `data/cache/` was populated and committed — the repo
+reproduces offline from the cache. Every fetcher fails loudly (no silent
+empty frames), so a dead endpoint or changed series ID cannot masquerade as
+missing data. Live verification changed two sources from the original plan
+(Brazil curve, DE policy) — both switches are documented below.
 
 ## Sources and endpoints
 
 | Country | Source | Endpoint | Auth | Status |
 |---|---|---|---|---|
-| MX | Banxico SIE API | `https://www.banxico.org.mx/SieAPIRest/service/v1/series/{ids}/datos/{start}/{end}` | free token, `Bmx-Token` header | series IDs: verify on first refresh |
-| BR | ANBIMA ETTJ (daily NSS params) | `https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp` (POST, one business day per request) | none | verify on first refresh |
-| BR policy | BCB SGS | `https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json` (432 = Selic target) | none | documented, standard |
-| US | treasury.gov daily par yields CSV | `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&_format=csv` | none | documented, standard |
-| US policy | FRED public CSV (no key): `https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFEDTARU` (target upper bound) | none | documented, standard |
-| DE policy | ECB data portal SDMX CSV (no key): `https://data-api.ecb.europa.eu/service/data/FM/D.U2.EUR.4F.KR.DFR.LEV?format=csvdata` (deposit facility rate) | none | documented, standard |
-| DE | Bundesbank SDMX REST, flow `BBSIS` | `https://api.statistiken.bundesbank.de/rest/data/BBSIS/{key}?format=csv` | none | par-yield keys confirmed in docs; param keys: verify on first refresh |
-| PL/HU/TR | deferred to M5 | see "Deferred countries" | — | blocked, see below |
+| MX | Banxico SIE API, weekly auction yields | `https://www.banxico.org.mx/SieAPIRest/service/v1/series/{ids}/datos/{start}/{end}` | free token, `Bmx-Token` header | verified live 2026-07-22 |
+| MX policy | Banxico SIE `SF61745` (overnight target) | same API | token | verified live |
+| BR | Tesouro Direto daily rates (LTN + NTN-F) | `https://www.tesourotransparente.gov.br/ckan/dataset/.../PrecoTaxaTesouroDireto.csv` (full URL in `src/fetchers.py`) | none | verified live; see "Brazil" for why not ANBIMA/B3 |
+| BR policy | BCB SGS 432 (Selic target) | `https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json` | none | verified live |
+| US | treasury.gov daily par yields CSV | `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&_format=csv` | none | verified live |
+| US policy | FRED public CSV `DFEDTARU` (target upper bound) | `https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFEDTARU` | none | verified live |
+| DE | Bundesbank SDMX REST, flow `BBSIS`, daily Svensson params β0–β3, τ1, τ2 | `https://api.statistiken.bundesbank.de/rest/data/BBSIS/D.I.ZST.{B0..T2}.EUR.S1311.B.A604._Z.R.A.A._Z._Z.A?format=csv` | none | param keys verified live (β0 = 4.07 on 2026-07-10) |
+| DE policy | FRED public CSV `ECBDFR` (ECB deposit facility rate mirror) | `https://fred.stlouisfed.org/graph/fredgraph.csv?id=ECBDFR` | none | canonical ECB portal (`FM.D.U2.EUR.4F.KR.DFR.LEV`) returned 504s at build time, even for 5-observation windows; FRED mirror lags ≤1 day, immaterial for a policy rate |
+| PL/HU/TR | deferred to M5 | see "Deferred countries" | — | pending |
 
 ### Mexico (Banxico SIE)
 
-- Cetes secondary/auction yield series `SF43936` (28d), `SF43939` (91d),
-  `SF43942` (182d), `SF43945` (364d) are widely documented. Bonos M
-  fixed-rate tenor series IDs (3/5/10/20/30y) are set in
-  `src/fetchers.py:MX_SERIES` from the SIE catalogue (cuadro CF107,
-  "Valores gubernamentales, mercado secundario") — *verify on first
-  refresh*; a wrong ID returns an SIE error which the fetcher raises.
-- Quoting: Cetes are discount-paper yields quoted as simple annual rates on
-  actual/360 for their term; converted to effective annual. Bonos M pay
-  semiannual coupons, secondary-market yield quoted semiannual
-  bond-equivalent; converted to effective annual: `(1 + y/2)^2 - 1`.
-- Weekly auction frequency for some series → forward-filled to business
-  days only for z-score history, never for the "today" curve snapshot.
+- Yields are the **weekly auction results** (cuadro CF107), the only free
+  per-tenor source with usable frequency; the "mercado secundario" tables
+  (CF114) turned out to be monthly averages. Verified series: Cetes
+  `SF43936/39/42/45` (28/91/182/364d); Bonos M `SF43883` (3y), `SF43886`
+  (5y), `SF44071` (10y), `SF45384` (20y), `SF60696` (30y). The 7y Bono
+  series (`SF44946`) has returned nothing for 6y — 7y is out of the
+  auction calendar — so the MX grid is 9 tenors. First-guess IDs from
+  documentation were wrong in a subtle way (`SF44070` is the auction
+  *term in days*, whence a "3,213" parse) — caught because the fetcher
+  fails loudly; SIE also uses commas as thousands separators, handled
+  explicitly.
+- Each tenor is auctioned on its own rotation, so no single date carries a
+  full curve. `ffill_panel` forward-fills each tenor at most 45 business
+  days, then drops incomplete dates — stale-but-bounded beats
+  interpolated. Long-end points can be up to ~6 weeks old; this smooths
+  the fitted history, so MX realized vol (hence carry-per-vol) is, if
+  anything, understated. Fit RMSE (~9bp median) reflects the
+  auction-vintage mixing.
+- Quoting: Cetes are simple annual act/360 for their term → effective
+  annual. Bonos M are semiannual bond-equivalent → `(1 + y/2)^2 - 1`.
 
-### Brazil (ANBIMA + BCB)
+### Brazil (Tesouro Direto + BCB)
 
-- The old BM&F DI×pré swap referential series on BCB SGS (7805–7827) were
-  **discontinued in 2019** — confirmed during endpoint research. Do not use.
-- Primary source: ANBIMA publishes daily fitted **Svensson parameters** for
-  the prefixado (nominal) curve — we use their β/τ directly, same approach
-  as Bundesbank for DE, no fitting on our side. Historical depth requires
-  one request per business day; the fetcher loops and caches incrementally.
-- Fallback if ANBIMA blocks scripted access: B3 "Taxas referenciais" daily
-  vertex page (HTML, parseable). Second fallback: reduced tenor set from
-  LTN/NTN-F indicative rates.
-- Quoting: Brazilian rates are exponential on a **252-business-day** basis,
-  `(1+i)^(du/252)`. The annualized number is already an effective annual
-  rate; no compounding conversion needed, only the day-count note. ANBIMA
-  curve is zero-coupon — the cleanest of the four.
+The curve source changed twice during live verification — the audit trail:
+
+1. BM&F DI×pré swap referential series on BCB SGS (7805–7827):
+   **discontinued in 2019**. Not used.
+2. ANBIMA daily Svensson parameters (the original plan): the public
+   `CZ-down.asp` download is a **rolling ~5-business-day window** — older
+   dates return an empty document; deep history is subscriber-only. Useless
+   for 5y z-scores. (The parser was validated first: parameters reproduce
+   ANBIMA's own published vertices to 0.01bp, including their
+   decimal-comma scientific notation and decimal-vs-percent units.)
+3. B3 legacy "taxas referenciais" vertex page (`www2.bmf.com.br/...`):
+   dead server-side — returns a SQL Server connection error.
+4. **Adopted: Tesouro Direto daily rates file** (Tesouro Transparente CKAN,
+   one ~14MB CSV, full history since 2002, no key). Prefixado universe =
+   LTN ("Tesouro Prefixado", zero-coupon) + NTN-F ("com Juros Semestrais");
+   yield = mid of morning buy/sell; tenor = actual time to maturity per
+   bond (NS/NSS fitting handles the irregular grid).
+
+Caveat, quantified: Tesouro Direto is a retail window, so it embeds a
+spread vs the interbank curve. Cross-check on 2026-07-17 (our NSS fit vs
+ANBIMA's published params): −7.6bp at 1y, −23.1bp at 5y, −19.3bp at 10y.
+A level effect of that size is immaterial for slope z-scores (source is
+self-consistent through time) and small for carry/roll; stated rather
+than hidden.
+
+Quoting: Brazilian rates are exponential on a **252-business-day** basis,
+`(1+i)^(du/252)`; the quoted number is already an effective annual rate —
+no compounding conversion, only this day-count note.
 
 ### United States (treasury.gov)
 
@@ -72,13 +93,14 @@ through as missing data.
   securities (flow `BBSIS`); we use them directly instead of fitting
   (spec requirement). Confirmed key pattern for fitted yields:
   `D.I.ZAR.ZI.EUR.S1311.B.A604.R{MM}XX.R.A.A._Z._Z.A` (e.g. `R10XX` = 10y).
-  The six parameter series keys (β0..β3, τ1, τ2) follow the same dimension
-  structure with the parameter in place of the maturity code — *verify on
-  first refresh*. Fallback (implemented): pull the fitted par-yield grid
-  1y–15y from the confirmed keys above and refit NSS; result is
-  numerically near-identical for our tenors and is flagged in the fit-RMSE
-  table when used.
-- Bundesbank/ANBIMA Svensson yields are effective annual — no conversion.
+  The six parameter series keys (β0..β3, τ1, τ2) were **verified live**:
+  `D.I.ZST.{B0,B1,B2,B3,T1,T2}.EUR.S1311.B.A604._Z.R.A.A._Z._Z.A`.
+  A fallback (implemented, unused) refits NSS from the fitted-yield grid
+  1y–15y should the parameter keys ever move.
+- Bundesbank quirks: the CSV ships an unnamed date column, several
+  metadata rows before the data, and "." for missing values — all handled
+  in one parser, which the ECB-style `TIME_PERIOD` CSVs share.
+- Bundesbank Svensson yields are effective annual — no conversion.
 
 ## Common basis
 
@@ -88,6 +110,12 @@ tenor grid in years. Conversions above; implemented and unit-tested in
 NS/NSS to the observed grid per country and state the object we fitted. At
 2s10s/5s10s granularity the carry/roll ranking is robust to par-vs-zero;
 this is a stated approximation, not a silent one.
+
+**Policy rates share the basis**: the Banxico target, fed funds bounds, and
+ECB deposit rate are quoted simple annual act/360 for an overnight term and
+are converted via `(1 + r/360)^365 − 1` (≈ +20bp at MX levels — large
+enough to distort "cuts priced" if ignored). The Selic target is already
+effective annual on the 252 convention and passes through unchanged.
 
 ## Policy-path lens
 
@@ -115,6 +143,6 @@ business days). Money chart ranks carry+roll per unit of that vol.
 PL: NBP API has no bond yields; plan is MF/GPW benchmark fixings with
 Stooq daily CSV (`https://stooq.com/q/d/l/?s=10yply.b&i=d`, also 2y/5y
 symbols) as the free fallback. HU: ÁKK benchmark fixings, Stooq fallback
-(`10yhuy.b` etc.). TR: TCMB EVDS (free key) — endpoint blocked in this
-sandbox. All three enter only after their sanity table passes; sparse
+(`10yhuy.b` etc.). TR: TCMB EVDS — needs a free key (`EVDS_KEY`), not yet
+provided. All three enter only after their sanity table passes; sparse
 3–4-tenor grids get NS with λ fixed by the MX/BR fitted range, flagged.
