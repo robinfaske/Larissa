@@ -147,25 +147,53 @@ def write_includes(fits: dict, policy: dict, summary: pd.DataFrame) -> list[tupl
     return rows
 
 
+def _compile(typ: Path, out: Path) -> None:
+    out.write_bytes(typst.compile(str(typ), root=str(ROOT),
+                                  font_paths=[str(ROOT / "assets" / "fonts")]))
+    print(f"wrote {out} ({out.stat().st_size:,} bytes)")
+
+
+def _thumbnail(pdf: Path, png: Path, scale: float = 1.2) -> None:
+    try:
+        import pypdfium2 as pdfium
+        pdfium.PdfDocument(str(pdf))[0].render(scale=scale).to_pil().save(png)
+        print(f"wrote {png}")
+    except ImportError:
+        print("pypdfium2 not installed — skipped thumbnail")
+
+
+def build_paper_figures(fits: dict, summary: pd.DataFrame) -> None:
+    """Regenerate the three figures at paper column widths (no post-scaling)."""
+    from src import plots, theme
+    figdir = ROOT / "paper" / "figs"
+    grid_start = {"BR": 0.5}
+    curves = {}
+    for cc, frame in fits.items():
+        today = frame.iloc[-1]
+        past = (frame["date"] - (today["date"] - pd.Timedelta(days=182))).abs().idxmin()
+        import numpy as np
+        g = np.linspace(grid_start.get(cc, 0.25), 10.0, 60)
+        curves[cc] = {"grid": g, "today": curve_at(today, g), "past": curve_at(frame.loc[past], g)}
+    plots.plot_curve_panels(curves, width_in=theme.PAPER_TEXT_IN, fig_dir=figdir)
+    plots.plot_z_vs_cuts(summary, width_in=theme.PAPER_FIG_IN, fig_dir=figdir)
+    plots.plot_carry_ranking(summary, width_in=theme.PAPER_TEXT_IN, fig_dir=figdir)
+
+
 def main() -> None:
     fits, policy = run_all.load_all()
     summary = analytics.summary_table(fits, policy)
     run_all.build_figures(fits, summary)
     rows = write_includes(fits, policy, summary)
     print(f"{len(rows)} variables ->", INC / "vars.typ")
-    print(pd.DataFrame(rows, columns=["variable", "value", "source"]).to_string(index=False))
-    pdf = typst.compile(str(ROOT / "report" / "note.typ"), root=str(ROOT),
-                        font_paths=[str(ROOT / "assets" / "fonts")])
-    out = ROOT / "report" / "note.pdf"
-    out.write_bytes(pdf)
-    print(f"wrote {out} ({len(pdf):,} bytes)")
-    try:  # README thumbnail; optional dependency
-        import pypdfium2 as pdfium
-        page = pdfium.PdfDocument(str(out))[0]
-        page.render(scale=1.2).to_pil().save(ROOT / "report" / "note_page1.png")
-        print("wrote report/note_page1.png")
-    except ImportError:
-        print("pypdfium2 not installed — skipped README thumbnail")
+
+    _compile(ROOT / "report" / "note.typ", ROOT / "report" / "note.pdf")
+    _thumbnail(ROOT / "report" / "note.pdf", ROOT / "report" / "note_page1.png")
+
+    paper = ROOT / "paper" / "paper.typ"
+    if paper.exists():
+        build_paper_figures(fits, summary)
+        _compile(paper, ROOT / "paper" / "paper.pdf")
+        _thumbnail(ROOT / "paper" / "paper.pdf", ROOT / "paper" / "paper_page1.png")
 
 
 if __name__ == "__main__":

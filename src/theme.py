@@ -21,8 +21,8 @@ FAMILY = "STIX Two Text"
 
 # Column geometry (inches) matching the documents' text measures.
 NOTE_TEXT_IN = 6.61   # A4 with 1.7cm side margins
-PAPER_TEXT_IN = 6.10  # US-letter-ish single column
-PAPER_COL_IN = 2.95   # two-up half column
+PAPER_TEXT_IN = 6.55  # A4 with 2.2cm side margins
+PAPER_FIG_IN = 3.5    # single academic figure, centered
 
 INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, BASELINE, SURFACE = "#e1e0d9", "#c3c2b7", "#ffffff"

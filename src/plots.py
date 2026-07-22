@@ -89,7 +89,7 @@ def plot_z_vs_cuts(summary: pd.DataFrame, width_in: float = 3.95,
     ax.set_xlabel("policy change priced over 12m, bp\n(3m rate 9m fwd − policy; < 0 = cuts)")
     ax.set_ylabel("5s10s / 2s10s slope, z-score vs 5y history")
     fig.tight_layout(pad=0.5)
-    fig.subplots_adjust(bottom=0.22)
+    fig.subplots_adjust(bottom=0.25)
     return theme.save(fig, (fig_dir or FIG_DIR) / "fig_z_vs_cuts.pdf")
 
 
