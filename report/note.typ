@@ -8,7 +8,8 @@
     Views my own; all data free and public. Not investment advice.
     #h(1fr) #counter(page).display("1 / 1", both: true)
   ])
-#set text(size: 9.2pt, font: "Libertinus Serif")
+#set text(size: 9.2pt, font: "STIX Two Text")
+#show math.equation: set text(font: "STIX Two Math")
 #set par(justify: true, leading: 0.56em)
 #show heading.where(level: 1): it => block(above: 0.85em, below: 0.5em)[
   #set text(size: 9.6pt, weight: "bold")
@@ -68,7 +69,7 @@ uses, survives that bias (Appendix C). Against this pricing, BR 5s10s is flat
 to its own 5y history while every other curve in the set is steep to normal —
 the combination the steepener monetizes.
 
-#figure(image("/output/figs/fig2_z_vs_cuts.png", width: 71%),
+#figure(image("/output/figs/fig_z_vs_cuts.pdf"),
   caption: text(size: 8.2pt)[Brazil sits alone in the lower-left: no cuts priced, curve flat to history.
     The steepener needs the cycle to be *priced*, not delivered.])
 
@@ -85,7 +86,7 @@ check isolates the local story: BR minus US 5s10s sits at #n.box_level bp
 (z #n.box_z) and the two slopes' daily changes are uncorrelated (#n.box_corr),
 so Brazil's flatness is not imported global duration — it is local pricing.
 
-#figure(image("/output/figs/fig3_carry_per_vol.png", width: 65%),
+#figure(image("/output/figs/fig_carry_per_vol.pdf", width: 100%),
   caption: text(size: 8.2pt)[MX pays most per unit of risk but against a #n.mx_z σ-steep slope;
     BR's smaller ratio buys a trade whose carry and z-score agree.])
 
@@ -93,7 +94,7 @@ so Brazil's flatness is not imported global duration — it is local pricing.
 #csvtable("/report/includes/summary.csv", 9, fs: 8pt)
 #text(size: 7.6pt, fill: muted)[C+R quoted for the steepener; Exit is the 1σ invalidation level for the positive-carry direction. Policy rates effective annual.]
 
-#figure(image("/output/figs/fig1_curves.png", width: 96%),
+#figure(image("/output/figs/fig_curves.pdf", width: 100%),
   caption: text(size: 8.2pt)[Six months repriced every curve higher; Brazil un-inverted at the front —
     the market moved the cutting cycle out rather than pricing it in.])
 

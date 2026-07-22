@@ -95,4 +95,4 @@ def test_summary_table_and_figures_end_to_end(tmp_path, monkeypatch):
               for cc, f in fits.items()}
     for path in (plots.plot_curve_panels(curves), plots.plot_z_vs_cuts(summary),
                  plots.plot_carry_ranking(summary)):
-        assert path.exists() and path.stat().st_size > 10_000
+        assert path.exists() and path.suffix == '.pdf' and path.stat().st_size > 1_000

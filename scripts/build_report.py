@@ -154,7 +154,8 @@ def main() -> None:
     rows = write_includes(fits, policy, summary)
     print(f"{len(rows)} variables ->", INC / "vars.typ")
     print(pd.DataFrame(rows, columns=["variable", "value", "source"]).to_string(index=False))
-    pdf = typst.compile(str(ROOT / "report" / "note.typ"), root=str(ROOT))
+    pdf = typst.compile(str(ROOT / "report" / "note.typ"), root=str(ROOT),
+                        font_paths=[str(ROOT / "assets" / "fonts")])
     out = ROOT / "report" / "note.pdf"
     out.write_bytes(pdf)
     print(f"wrote {out} ({len(pdf):,} bytes)")
