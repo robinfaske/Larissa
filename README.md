@@ -6,6 +6,8 @@ Brazil (US and Germany as anchors), reads the short end as an implied policy
 path, scores 2s10s/5s10s slopes against their own 5-year history, and prices
 DV01-neutral steepeners/flatteners on 3m static carry + rolldown — sized by
 realized vol, so the ranking chart is carry per unit of risk, not raw carry.
+(Poland/Hungary/Turkey were candidates; PL/HU failed the free-data quality
+gate and TR awaits an API key — the audit trail is in DECISIONS.md.)
 
 *Views are my own; all data is free and public (Banxico SIE, Tesouro
 Nacional, BCB, treasury.gov, FRED, Bundesbank). Nothing here reflects any

@@ -138,11 +138,25 @@ Funding at the policy rate (repo proxy) — stated simplification.
 Trade vol = stdev of daily changes in the fitted trade spread × √66 (3m,
 business days). Money chart ranks carry+roll per unit of that vol.
 
-## Deferred countries (M5 gate)
+## Deferred countries — M5 gate outcome (2026-07-22)
 
-PL: NBP API has no bond yields; plan is MF/GPW benchmark fixings with
-Stooq daily CSV (`https://stooq.com/q/d/l/?s=10yply.b&i=d`, also 2y/5y
-symbols) as the free fallback. HU: ÁKK benchmark fixings, Stooq fallback
-(`10yhuy.b` etc.). TR: TCMB EVDS — needs a free key (`EVDS_KEY`), not yet
-provided. All three enter only after their sanity table passes; sparse
-3–4-tenor grids get NS with λ fixed by the MX/BR fitted range, flagged.
+**PL and HU are excluded**: no free, scriptable, per-tenor daily yield
+source survived verification, and this repo does not scrape around access
+controls. The audit trail:
+
+- Stooq CSV endpoints (`10yply.b`, `10yhuy.b`, …): now behind a
+  proof-of-work anti-bot challenge (SHA-256 nonce + `/__verify` cookie).
+  Solvable programmatically, but circumventing an explicit anti-scraper
+  wall is the wrong trade for this repo. Out.
+- ÁKK (HU debt agency) reference yields: the statistics section is a
+  JavaScript (Vaadin) application; no public data API is documented and
+  deep links 404. Out.
+- BondSpot / GPW Benchmark (PL): fixing results are news-bulletin pages
+  and the TBSP is an index level, not a per-tenor curve. Out.
+- NBP and MNB open APIs: FX and policy rates only — no bond yields.
+
+**TR is pending**: TCMB EVDS is a documented free API but needs a key
+(`EVDS_KEY` in the environment, like `BANXICO_TOKEN`); not yet provided.
+If added later: sparse 3–4-tenor grids get NS with λ fixed from the MX/BR
+fitted range, flagged in the summary table, and enter only after a clean
+sanity table.
