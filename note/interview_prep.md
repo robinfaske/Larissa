@@ -1,7 +1,9 @@
-# Interview prep — the 15 hardest questions on this note
+# Interview prep — the hardest questions on this note
 
 Each answer comes from the repo (code, DECISIONS.md, or the note's
-provenance table). Numbers are as of the 2026-07-22 cache.
+provenance table). Numbers are as of the 2026-07-22 cache. Questions 1–15
+cover the note; 16–21 cover the working paper's robustness section
+(`src/robustness.py`, paper Section 5).
 
 **1. Your Brazil curve is retail Tesouro Direto data. Why should I trust a
 slope signal from a retail window?**
@@ -137,3 +139,80 @@ Appendix D prints the variable-to-source mapping. Change the cache,
 rebuild, and the note is correct again — or the build fails loudly. The
 only recorded (not recomputed) numbers are the three ANBIMA cross-check
 constants, flagged as such in the provenance table with their date.
+
+---
+
+## Working-paper robustness (Section 5)
+
+**16. Your own mean-reversion check says flat slopes revert only 49% of the
+time — a coin flip. Doesn't that kill the Brazil trade?**
+It kills the *lazy* version of the trade — "it's flat, it'll steepen" — and
+I put that finding in the paper rather than bury it. Pooling all eight
+trades, steep slopes (z > +1) flatten 63% of the time over the next 66
+days across 1,450 events, but flat slopes (z < −1) steepen only 49% across
+3,258 events. So mean reversion is asymmetric and I do not lean on it. The
+Brazil 5s10s is a flat-slope position (z −0.56), so its edge is the
+forward-implied path mispricing (−8.4bp priced against a 14.25% Selic) and
+the +2.8bp/quarter carry — the z-score is context and the invalidation
+level is risk management, not expected alpha. The trade pays you to hold a
+repricing option; it does not depend on the slope reverting on a timer.
+
+**17. You pooled all eight trades across four countries for that reversion
+count. Isn't that mixing regimes and double-counting overlapping windows?**
+Both are fair limitations and neither flatters or damns the result
+selectively. Overlapping 66-day windows make the 1,450/3,258 event counts
+statistically dependent, so I read them as a directional tendency, not an
+i.i.d. sample — which is exactly why I report a hit rate and a median move,
+not a t-statistic or a P&L. Pooling across countries is deliberate: any one
+market has too few |z|>1 episodes in five years to say anything, and the
+asymmetry (reversion from rich, not from cheap) holds in the pooled set,
+which is the general claim. A per-country breakdown is a one-line change if
+a desk wanted it.
+
+**18. Your λ-sensitivity table shows Mexico's carry swinging from 26 to 13
+bp as you pin the decay. If the carry isn't robust to the fit, why trust the
+ranking?**
+Because the trade I am recommending is Brazil, whose 5s10s carry is nearly
+invariant — 1.6 to 1.8 bp across the full 10th-to-90th-percentile decay
+range. Mexico's 2s10s is decay-sensitive precisely because its short leg
+sits at 2y, where the Nelson-Siegel curvature term is largest, so pinning
+the decay away from its fitted value re-shapes the front and moves the
+carry. That is an argument for reading MX's absolute carry with caution, and
+I do — the note already flags MX as the trade whose carry and z-score
+disagree. It does not touch the Brazil conclusion.
+
+**19. Rolling RMSE hits 14.3 bp for Brazil in Feb 2021 — four times the
+median. Your fit breaks exactly when a trader would want it most.**
+Correct, and stated in the paper. The Feb 2021 blow-up is the COVID-recovery
+repricing, when the front of the BR curve was moving violently and a smooth
+four-parameter fit cannot track a kinked curve. Two responses: first, the
+current reading (July 2026) is in a calm window at the 3.4bp median, so
+today's slope is well-measured; second, the invalidation rule and the
+"repricing trade, not carry trade" framing exist precisely because the
+loss distribution has these fat episodes. If I were trading through a stress
+like that, I would widen the fit (add tenors, shorten the window) or switch
+to raw benchmark bonds — the RMSE series is the tripwire that tells me when.
+
+**20. Weekly and daily vol are identical for Mexico (ratio 1.00) but the
+daily is higher than weekly for the clean sources. Explain the direction.**
+For Mexico the 45-day forward-fill could in principle inject stale zeros
+that damp daily changes; the 1.00 ratio shows it does not, because auction
+weeks deliver the moves in jumps that both samplings capture. For the daily
+sources (US 0.68–0.71, BR 0.70–0.84) the daily series has more high-frequency
+mean-reverting noise than the weekly, so daily-sampled vol sits above
+weekly — standard microstructure. I size on the daily number, so if anything
+I am using the more conservative (larger) vol in the denominator, making the
+reported carry-per-vol a floor, not a flattering ceiling.
+
+**21. Why a count-based reversion check instead of a proper backtest with
+P&L, transaction costs, and Sharpe ratios?**
+Because a backtest is a different, heavier claim than this note makes, and a
+bad one would be worse than none. The note's claim is a point-in-time
+relative-value observation plus a mechanical risk frame; the reversion check
+tests one property behind it — do slopes at extremes tend to revert — with
+event counts and directional hit rates that cannot be curve-fit. A full
+backtest needs an execution model, a funding curve, a rebalancing rule, and
+survivorship-clean history, none of which I have from free retail data, and
+each of which is a place to accidentally manufacture a Sharpe. I list the
+desk data that would support a real backtest in the paper's discussion; I do
+not pretend the free-data version is one.
