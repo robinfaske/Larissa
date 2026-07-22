@@ -160,3 +160,18 @@ controls. The audit trail:
 If added later: sparse 3–4-tenor grids get NS with λ fixed from the MX/BR
 fitted range, flagged in the summary table, and enter only after a clean
 sanity table.
+
+## Report toolchain (Phase 2)
+
+Typst via the `typst` PyPI package (compiles in-process, fonts bundled, no
+system install) — chosen over HTML+weasyprint for deterministic layout and
+a single-binary dependency. `scripts/build_report.py` regenerates every
+inline number, table, and figure into `report/includes/` from the analytics
+layer and compiles `report/note.typ`; nothing in the note is hand-typed, and
+`includes/provenance.csv` maps each variable to its source function. The
+three ANBIMA retail-basis constants are the only recorded (not recomputed)
+numbers — the one-off cross-check is documented under "Brazil".
+
+Invalidation rule (also in the note): a trade exits when its slope moves
+one 5y standard deviation of levels — the z-score's own denominator —
+against the position from entry.
