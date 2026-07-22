@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
@@ -141,13 +142,22 @@ def fetch_br_params() -> pd.DataFrame:
     for day in days:
         if day.date() in have:
             continue
-        text = requests.post(
+        resp = requests.post(
             "https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp",
             data={"Idioma": "PT", "Dt_Ref": f"{day:%d/%m/%Y}", "saida": "txt"},
-            timeout=30).text
+            timeout=30)
+        resp.raise_for_status()
+        text = resp.text
+        time.sleep(0.15)  # politeness: ~1.5k sequential requests on first run
         params = _parse_anbima_prefixado(text)
         if params is not None:  # holidays return an empty document
             rows.append((day, *params))
+        if len(rows) % 100 == 0 and rows:  # checkpoint: first run is ~1.5k requests
+            _combine_br(cached, rows).to_csv(CACHE_DIR / "br_params.csv", index=False)
+    return _combine_br(cached, rows)
+
+
+def _combine_br(cached: pd.DataFrame | None, rows: list[tuple]) -> pd.DataFrame:
     fresh = pd.DataFrame(rows, columns=["date", "b0", "b1", "b2", "b3", "t1", "t2"])
     out = pd.concat([cached, fresh]) if cached is not None else fresh
     return out.sort_values("date").reset_index(drop=True)
@@ -158,13 +168,14 @@ def _parse_anbima_prefixado(text: str) -> tuple[float, ...] | None:
     block = re.search(r"PREFIXADOS(.*?)(?:IPCA|$)", text, flags=re.S | re.I)
     if not block:
         return None
-    nums = re.findall(r"-?\d+[.,]\d+", block.group(1))
+    # decimal commas AND scientific notation, e.g. -7,28447805013511E-03
+    nums = re.findall(r"-?\d+[.,]\d+(?:E[+-]?\d+)?", block.group(1))
     if len(nums) < 6:
         return None
     b1, b2, b3, b4, l1, l2 = (float(n.replace(",", ".")) for n in nums[:6])
-    # ANBIMA names betas 1-4 and quotes lambdas as decay rates; map to our
-    # (b0..b3, t1, t2) with tau = 1/lambda.
-    return b1, b2, b3, b4, 1.0 / l1, 1.0 / l2
+    # ANBIMA quotes betas in decimals (0.1458 = 14.58%) and lambdas as decay
+    # rates; convert to our percent basis and tau = 1/lambda.
+    return 100 * b1, 100 * b2, 100 * b3, 100 * b4, 1.0 / l1, 1.0 / l2
 
 
 def fetch_br_policy() -> pd.DataFrame:
@@ -254,7 +265,8 @@ def fetch_de_policy() -> pd.DataFrame:
 
 def _parse_bbk_csv(raw: pd.DataFrame, value_name: str) -> pd.DataFrame:
     """Bundesbank SDMX CSV -> [date, value] with non-numeric flag rows dropped."""
-    date_col = next(c for c in raw.columns if c.upper().startswith(("TIME", "DATE")))
+    date_col = next((c for c in raw.columns if c.upper().startswith(("TIME", "DATE"))),
+                    raw.columns[0])  # Bundesbank CSV: unnamed first column, metadata rows
     value_col = next(c for c in raw.columns if c.upper().startswith(("OBS_VALUE", "VALUE", "BBSIS")))
     out = raw[[date_col, value_col]].copy()
     out.columns = ["date", value_name]

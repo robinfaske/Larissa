@@ -31,45 +31,49 @@ DATASETS = {  # cache name -> fetcher
 
 
 def refresh_all() -> None:
+    """Refresh every source; a failing source is reported, not fatal —
+    the affected country simply drops out of load_all with a warning."""
     for name, fn in DATASETS.items():
-        if name == "de_params":
-            try:
-                fetchers.refresh(name, fn)
-            except Exception as err:  # documented fallback, DECISIONS.md
+        try:
+            fetchers.refresh(name, fn)
+            print(f"refreshed {name}", flush=True)
+        except Exception as err:
+            if name == "de_params":  # documented fallback, DECISIONS.md
                 print(f"de_params failed ({err}); falling back to yield grid + refit")
                 fetchers.refresh("de_curve", fetchers.fetch_de_yield_grid)
-        else:
-            fetchers.refresh(name, fn)
-        print(f"refreshed {name}")
+            else:
+                print(f"REFRESH FAILED {name}: {err}", flush=True)
 
 
 def load_all() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
-    """Return (fits_by_cc, policy_by_cc); raises listing every missing cache."""
-    missing, fits, policy = [], {}, {}
-    for cc, curve_name, kind in (("MX", "mx_curve", "fit"), ("US", "us_curve", "fit"),
-                                 ("BR", "br_params", "published"),
-                                 ("DE", "de_params", "published")):
+    """Return (fits_by_cc, policy_by_cc) for every country whose curve AND
+    policy caches exist; missing countries are warned about, never silently
+    interpolated. Fails only if fewer than two countries survive."""
+    fits, policy = {}, {}
+    for cc, curve_name, policy_name, kind in (
+            ("MX", "mx_curve", "mx_policy", "fit"),
+            ("US", "us_curve", "us_policy", "fit"),
+            ("BR", "br_params", "br_policy", "published"),
+            ("DE", "de_params", "de_policy", "published")):
         try:
             if kind == "fit":
                 fits[cc] = fit_history(fetchers.load(curve_name))
             else:
                 fits[cc] = fetchers.load(curve_name)
+            policy[cc] = fetchers.load(policy_name)
         except FileNotFoundError as err:
-            if cc == "DE":  # fallback cache from refresh_all
+            if cc == "DE" and "de_params" in str(err):  # fallback cache
                 try:
                     fits[cc] = fit_history(fetchers.load("de_curve"))
+                    policy[cc] = fetchers.load(policy_name)
                     continue
-                except FileNotFoundError:
-                    pass
-            missing.append(str(err))
-    for cc, name in (("MX", "mx_policy"), ("BR", "br_policy"),
-                     ("US", "us_policy"), ("DE", "de_policy")):
-        try:
-            policy[cc] = fetchers.load(name)
-        except FileNotFoundError as err:
-            missing.append(str(err))
-    if missing:
-        raise SystemExit("missing caches:\n  " + "\n  ".join(missing))
+                except FileNotFoundError as err2:
+                    err = err2
+            fits.pop(cc, None)
+            print(f"WARNING: {cc} dropped — {err}", flush=True)
+    if len(fits) < 2:
+        raise SystemExit("fewer than two countries have complete caches — "
+                         "run with --refresh (see DECISIONS.md)")
     return fits, policy
 
 
