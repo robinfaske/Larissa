@@ -179,3 +179,21 @@ numbers — the one-off cross-check is documented under "Brazil".
 Invalidation rule (also in the note): a trade exits when its slope moves
 one 5y standard deviation of levels — the z-score's own denominator —
 against the position from entry.
+
+## Typography & engine (Phase 3)
+
+Both documents (report/ desk note, paper/ working paper) build with
+**Typst 0.15** via the `typst` PyPI package — native `.bib`, STIX Two
+Math, deterministic layout, single binary. LaTeX was considered for the
+paper only and rejected: at five references and ~10 numbered equations it
+adds a toolchain for no quality gain.
+
+Shared type system: **STIX Two Text** (body) + **STIX Two Math**,
+committed under `assets/fonts/` (Google Fonts TTFs; the GitHub raw and SIL
+mirrors both 403 in this environment). `src/theme.py` registers the same
+family in matplotlib; figures export as vector PDF at exact text/column
+width — no post-scaling, no rasterized text — with a source line under
+each. Tables are booktabs-style (no vertical rules, thin horizontals,
+right-aligned numerics with tabular figures via `number-width: "tabular"`,
+units in headers). Figure numbering is delegated to Typst's counter so the
+file names (`fig_*`) and the printed "Figure N" never drift.

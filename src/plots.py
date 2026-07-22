@@ -101,7 +101,7 @@ def plot_carry_ranking(summary: pd.DataFrame, width_in: float = theme.NOTE_TEXT_
     frame["ratio"] = frame["carry_per_vol"].abs()
     frame["label"] = frame["country"] + " " + frame["trade"] + " " + frame["direction"]
     frame = frame.sort_values("ratio")
-    fig, ax = theme.figure(width_in, 0.34 * len(frame) + 1.0)
+    fig, ax = theme.figure(width_in, 0.28 * len(frame) + 0.75)
     colors = [theme.COUNTRY_COLORS.get(cc, theme.INK2) for cc in frame["country"]]
     bars = ax.barh(frame["label"], frame["ratio"], color=colors, height=0.6)
     for bar, ratio in zip(bars, frame["ratio"]):
