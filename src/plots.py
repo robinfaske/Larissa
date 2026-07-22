@@ -52,9 +52,9 @@ def plot_curve_panels(curves: dict[str, dict[str, np.ndarray]]) -> Path:
     shortest observed tenor.
     """
     with plt.rc_context(STYLE):
-        cols = min(len(curves), 3)
+        cols = min(len(curves), 4)
         rows = -(-len(curves) // cols)
-        fig, axes = plt.subplots(rows, cols, figsize=(7.2, 2.3 * rows),
+        fig, axes = plt.subplots(rows, cols, figsize=(7.6, 2.4 * rows),
                                  sharex=True, squeeze=False)
         for ax, (cc, data) in zip(axes.flat, curves.items()):
             color = COUNTRY_COLORS.get(cc, INK2)

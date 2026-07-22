@@ -28,10 +28,12 @@ mx_slope,+139.2,"MX 2s10s fitted slope, latest"
 mx_path12,+105.1,analytics.path_12m_bp(MX)
 box_level,−27.5,BR minus US 5s10s fitted slope
 box_z,−0.75,analytics.slope_zscore(BR−US 5s10s box)
-box_corr,−0.00,daily slope-change correlation
+box_corr,0.00,daily slope-change correlation
 kill_move,−20.9,invalidation minus entry slope
 kill_quarters,7.4,|invalidation move| / quarterly carry
-kill_beta,−0.00,"cov/var of daily d(5s10s) on d(3m2y front slope), full sample"
+kill_worst3m,−83.2,"min 66-bday change of BR 5s10s slope, 5y window"
+kill_worst3m_when,Nov 2021,date of that worst 3m flattening
+rb_5s10s,+3.8,retail-basis differential 10y minus 5y (slope mismeasurement)
 rb_1y,−7.6,DECISIONS.md one-off ANBIMA cross-check
 rb_5y,−23.1,DECISIONS.md one-off ANBIMA cross-check
 rb_10y,−19.3,DECISIONS.md one-off ANBIMA cross-check

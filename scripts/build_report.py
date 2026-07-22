@@ -29,6 +29,8 @@ RETAIL_BASIS_BP = {"1y": -7.6, "5y": -23.1, "10y": -19.3}
 
 
 def fmt(x: float, dp: int = 1, sign: bool = False) -> str:
+    if round(x, dp) == 0:
+        x = abs(x)  # avoid "−0.0"
     s = f"{x:+.{dp}f}" if sign else f"{x:.{dp}f}"
     return s.replace("-", "−")  # typographic minus
 
@@ -93,10 +95,13 @@ def build_vars(fits: dict, policy: dict, summary: pd.DataFrame) -> list[tuple[st
     var("kill_move", fmt(kill_move, 1, sign=True), "invalidation minus entry slope")
     var("kill_quarters", fmt(abs(kill_move) / b["steepener_carry_roll_bp_3m"], 1),
         "|invalidation move| / quarterly carry")
-    front = analytics.slope_series(br, 0.25, 2.0)
-    beta = br5.diff().cov(front.diff()) / front.diff().var()
-    var("kill_beta", fmt(beta, 2),
-        "cov/var of daily d(5s10s) on d(3m2y front slope), full sample")
+    chg3m = (br5.diff(66).dropna() * 100)
+    worst = chg3m[chg3m.index >= chg3m.index.max() - pd.DateOffset(years=5)]
+    var("kill_worst3m", fmt(float(worst.min()), 1, sign=True),
+        "min 66-bday change of BR 5s10s slope, 5y window")
+    var("kill_worst3m_when", f"{worst.idxmin():%b %Y}", "date of that worst 3m flattening")
+    var("rb_5s10s", fmt(RETAIL_BASIS_BP["10y"] - RETAIL_BASIS_BP["5y"], 1, sign=True),
+        "retail-basis differential 10y minus 5y (slope mismeasurement)")
     for k, v in RETAIL_BASIS_BP.items():
         var(f"rb_{k}", fmt(v, 1, sign=True), "DECISIONS.md one-off ANBIMA cross-check")
     return rows

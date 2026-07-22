@@ -119,10 +119,14 @@ effective annual on the 252 convention and passes through unchanged.
 
 ## Policy-path lens
 
-Cuts priced over 12m ≈ `2 × (fitted 1y yield − policy rate)`, i.e. the 1y
-zero read as the average expected policy rate over the next year under a
-linear path, term premium ignored. Crude, but identical across countries,
-which is what the cross-sectional chart needs.
+Policy change priced over 12m = implied 3m rate 9m forward minus the
+current policy rate (`analytics.path_12m_bp`), computed from the fitted
+curve's 9m and 12m points. Term premium in the 1y sector contaminates the
+level (stated in the note); the cross-market ranking is the robust object.
+The original crude metric, `2 × (fitted 1y − policy)`, survives as
+`naive_cuts_bp` for the note's appendix comparison — it read Brazil at
+−62bp of cuts where the forward metric reads −8bp, because it linearly
+extrapolates the 1y dip.
 
 ## Carry and rolldown
 
