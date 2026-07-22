@@ -71,15 +71,26 @@ def slope_zscore(slope: pd.Series, years: int = ZSCORE_YEARS) -> float:
     return float((window.iloc[-1] - window.mean()) / window.std(ddof=1))
 
 
-def cuts_priced_12m_bp(fit: pd.Series, policy_pct: float) -> float:
-    """Easing priced over the next 12m, bp; negative = cuts priced.
+def forward_rate(fit: pd.Series, t1: float, t2: float) -> float:
+    """Implied forward rate between t1 and t2 (years) off the fitted curve, %."""
+    y1 = float(curve_at(fit, t1)[0]) / 100.0
+    y2 = float(curve_at(fit, t2)[0]) / 100.0
+    return (((1 + y2) ** t2 / (1 + y1) ** t1) ** (1 / (t2 - t1)) - 1) * 100.0
 
-    Reads the fitted 1y yield as the average expected policy rate over the
-    year and assumes a linear path (DECISIONS.md), so the implied end-point
-    is policy + 2*(y1y - policy).
+
+def path_12m_bp(fit: pd.Series, policy_pct: float) -> float:
+    """Policy change priced over 12m, bp: implied 3m rate 9m forward vs policy.
+
+    Negative = cuts priced. Term premium in the 1y sector contaminates the
+    level (stated in the note); it replaced the cruder 2*(1y - policy)
+    metric, which is kept below for the appendix comparison.
     """
-    y1 = float(curve_at(fit, 1.0)[0])
-    return 2.0 * (y1 - policy_pct) * 100.0
+    return (forward_rate(fit, 0.75, 1.0) - policy_pct) * 100.0
+
+
+def naive_cuts_bp(fit: pd.Series, policy_pct: float) -> float:
+    """Appendix-only: the old linear-path metric, 2*(fitted 1y - policy), bp."""
+    return 2.0 * (float(curve_at(fit, 1.0)[0]) - policy_pct) * 100.0
 
 
 def trade_vol_3m_bp(slope: pd.Series) -> float:
@@ -87,6 +98,32 @@ def trade_vol_3m_bp(slope: pd.Series) -> float:
     daily = slope.sort_index().diff().dropna()
     recent = daily[daily.index >= daily.index.max() - pd.DateOffset(years=1)]
     return float(recent.std(ddof=1) * np.sqrt(BDAYS_3M) * 100.0)
+
+
+def weekly_vol_3m_bp(slope: pd.Series) -> float:
+    """3m vol from weekly-sampled slope changes * sqrt(13), bp.
+
+    Cross-check for forward-filled panels (MX): if stale fills damped the
+    daily estimate, this one would be materially higher.
+    """
+    wk = slope.sort_index()
+    wk.index = pd.DatetimeIndex(wk.index)
+    wk = wk.resample("W-FRI").last().dropna()
+    recent = wk[wk.index >= wk.index.max() - pd.DateOffset(years=1)]
+    return float(recent.diff().dropna().std(ddof=1) * np.sqrt(13) * 100.0)
+
+
+def invalidation_bp(slope: pd.Series, steepener: bool,
+                    years: int = ZSCORE_YEARS) -> float:
+    """Exit level for the trade's slope, bp.
+
+    Rule: the mean-reversion case is invalidated when the slope moves one
+    5y standard deviation (of levels, the z-score's own denominator)
+    against the position from today's level.
+    """
+    window = slope[slope.index >= slope.index.max() - pd.DateOffset(years=years)]
+    sd = float(window.std(ddof=1))
+    return float((window.iloc[-1] - sd if steepener else window.iloc[-1] + sd) * 100.0)
 
 
 def latest_policy(policy: pd.DataFrame) -> float:
@@ -115,10 +152,13 @@ def summary_table(fits_by_cc: dict[str, pd.DataFrame],
                 "country": cc, "trade": f"{t_short:g}s{t_long:g}s",
                 "slope_bp": slope.iloc[-1] * 100.0,
                 "slope_z": slope_zscore(slope),
-                "cuts_priced_12m_bp": cuts_priced_12m_bp(latest, policy),
+                "path_12m_bp": path_12m_bp(latest, policy),
+                "naive_cuts_bp": naive_cuts_bp(latest, policy),
                 "steepener_carry_roll_bp_3m": carry,
                 "vol_3m_bp": vol,
+                "vol_wk_3m_bp": weekly_vol_3m_bp(slope),
                 "carry_per_vol": carry / vol,
+                "inval_bp": invalidation_bp(slope, steepener=carry >= 0),
                 "fit_rmse_bp": latest.get("rmse_bp", float("nan")),
             })
     return pd.DataFrame(rows)

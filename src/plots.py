@@ -89,13 +89,13 @@ def plot_z_vs_cuts(summary: pd.DataFrame) -> Path:
         fig, ax = plt.subplots(figsize=(4.8, 4.0))
         ax.axhline(0, color=BASELINE, lw=0.8, zorder=1)
         ax.axvline(0, color=BASELINE, lw=0.8, zorder=1)
-        xs, ys = summary["cuts_priced_12m_bp"], summary["slope_z"]
+        xs, ys = summary["path_12m_bp"], summary["slope_z"]
         xr, yr = max(np.ptp(xs), 1e-9), max(np.ptp(ys), 1e-9)
         placed: list[tuple[float, float]] = []
         offsets = ((6, 4), (6, -11), (-6, 4), (-6, -11), (6, 14), (-6, 14))
         for _, row in summary.iterrows():
             color = COUNTRY_COLORS.get(row["country"], INK2)
-            x, y = row["cuts_priced_12m_bp"], row["slope_z"]
+            x, y = row["path_12m_bp"], row["slope_z"]
             ax.scatter(x, y, s=42, color=color, zorder=3)
             for dx, dy in offsets:  # first offset whose label clears the rest
                 lx, ly = x + dx * xr / 300, y + dy * yr / 300
@@ -107,9 +107,9 @@ def plot_z_vs_cuts(summary: pd.DataFrame) -> Path:
                         xytext=(dx, dy), textcoords="offset points",
                         fontsize=8, color=INK,
                         ha="left" if dx > 0 else "right")
-        ax.set_xlabel("policy change priced over 12m, bp (negative = cuts)")
+        ax.set_xlabel("policy change priced over 12m, bp\n(implied 3m rate 9m fwd minus policy; negative = cuts)")
         ax.set_ylabel("slope z-score vs 5y history")
-        ax.set_title("Rich cuts, flat curves — where both line up")
+        ax.set_title("Brazil prices no cuts, on a curve flat to history")
         fig.tight_layout()
         return _save(fig, "fig2_z_vs_cuts")
 

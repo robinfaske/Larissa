@@ -5,9 +5,10 @@ import pandas as pd
 import pytest
 
 from src import plots
-from src.analytics import (cuts_priced_12m_bp, dv01_neutral_ratio, leg_carry_roll_bp,
+from src.analytics import (dv01_neutral_ratio, forward_rate, invalidation_bp,
+                           leg_carry_roll_bp, naive_cuts_bp, path_12m_bp,
                            slope_series, slope_zscore, summary_table,
-                           trade_carry_roll_bp, zero_dv01)
+                           trade_carry_roll_bp, weekly_vol_3m_bp, zero_dv01)
 from src.curves import curve_at
 from src.fetchers import semiannual_to_effective, simple_360_to_effective
 
@@ -45,10 +46,15 @@ def test_steepener_flattener_are_signed_opposites():
     assert steep > 0
 
 
-def test_cuts_priced_reads_short_end():
-    assert cuts_priced_12m_bp(FLAT8, 8.0) == pytest.approx(0.0)
+def test_policy_path_metrics():
+    # flat curve: every forward equals the level, so no policy change priced
+    assert forward_rate(FLAT8, 0.75, 1.0) == pytest.approx(8.0, abs=1e-9)
+    assert path_12m_bp(FLAT8, 8.0) == pytest.approx(0.0, abs=1e-6)
+    assert naive_cuts_bp(FLAT8, 8.0) == pytest.approx(0.0)
     inverted = pd.Series({"b0": 6.0, "b1": 2.0, "b2": 0.0, "tau": 1.0})
-    assert cuts_priced_12m_bp(inverted, 8.0) < -50  # short end below policy = cuts
+    assert path_12m_bp(inverted, 8.0) < -50  # forward path below policy = cuts
+    # forward sits below both spot yields when the curve inverts locally
+    assert forward_rate(inverted, 0.75, 1.0) < float(curve_at(inverted, 0.75)[0])
 
 
 def test_basis_conversions():
@@ -72,7 +78,13 @@ def test_summary_table_and_figures_end_to_end(tmp_path, monkeypatch):
     summary = summary_table(fits, policy)
     assert len(summary) == 4  # 2 countries x (2s10s, 5s10s)
     assert set(summary["trade"]) == {"2s10s", "5s10s"}
-    assert summary["vol_3m_bp"].gt(0).all()
+    assert summary["vol_3m_bp"].gt(0).all() and summary["vol_wk_3m_bp"].gt(0).all()
+    # invalidation sits 1 sigma against each trade's positive-carry direction
+    mx = slope_series(fits["MX"], 2.0, 10.0)
+    row = summary.loc[summary.eval("country=='MX' and trade=='2s10s'")].iloc[0]
+    expected = invalidation_bp(mx, steepener=row["steepener_carry_roll_bp_3m"] >= 0)
+    assert row["inval_bp"] == pytest.approx(expected)
+    assert weekly_vol_3m_bp(mx) > 0
     z = slope_zscore(slope_series(fits["MX"], 2.0, 10.0))
     assert summary.loc[summary.eval("country=='MX' and trade=='2s10s'"),
                        "slope_z"].iloc[0] == pytest.approx(z)
