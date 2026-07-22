@@ -13,6 +13,21 @@ gate and TR awaits an API key — the audit trail is in DECISIONS.md.)
 Nacional, BCB, treasury.gov, FRED, Bundesbank). Nothing here reflects any
 employer.*
 
+## The note
+
+The research note itself — [report/note.pdf](report/note.pdf) — is built
+from this repo with every number generated, none typed:
+
+[![note page 1](report/note_page1.png)](report/note.pdf)
+
+```bash
+python scripts/build_report.py   # analytics -> report/includes/ -> note.pdf
+```
+
+The build regenerates all figures, tables, and inline statistics from the
+cache and prints a provenance table mapping each number to its source
+function (also embedded as Appendix D of the note).
+
 ## Charts
 
 | Curves: today vs 6m ago | Z-score vs cuts priced | Carry per unit vol |

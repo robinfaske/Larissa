@@ -158,6 +158,13 @@ def main() -> None:
     out = ROOT / "report" / "note.pdf"
     out.write_bytes(pdf)
     print(f"wrote {out} ({len(pdf):,} bytes)")
+    try:  # README thumbnail; optional dependency
+        import pypdfium2 as pdfium
+        page = pdfium.PdfDocument(str(out))[0]
+        page.render(scale=1.2).to_pil().save(ROOT / "report" / "note_page1.png")
+        print("wrote report/note_page1.png")
+    except ImportError:
+        print("pypdfium2 not installed — skipped README thumbnail")
 
 
 if __name__ == "__main__":
